@@ -42,7 +42,7 @@ use std::ptr;
 use std::slice;
 use std::sync::Arc;
 
-use crate::canvas::{Canvas, Format, RasterizationOptions};
+use crate::canvas::{Canvas, Format, AntialiasingStrategy};
 use crate::error::{FontLoadingError, GlyphLoadingError};
 use crate::file_type::FileType;
 use crate::handle::Handle;
@@ -430,7 +430,7 @@ impl Font {
         S: OutlineSink,
     {
         unsafe {
-            let rasterization_options = RasterizationOptions::GrayscaleAa;
+            let rasterization_options = AntialiasingStrategy::GrayscaleAa;
             let load_flags = self
                 .hinting_and_rasterization_options_to_load_flags(hinting, rasterization_options);
 
@@ -765,7 +765,7 @@ impl Font {
         point_size: f32,
         transform: Transform2F,
         hinting_options: HintingOptions,
-        rasterization_options: RasterizationOptions,
+        rasterization_options: AntialiasingStrategy,
     ) -> Result<RectI, GlyphLoadingError> {
         <Self as Loader>::raster_bounds(
             self,
@@ -793,7 +793,7 @@ impl Font {
         point_size: f32,
         transform: Transform2F,
         hinting_options: HintingOptions,
-        rasterization_options: RasterizationOptions,
+        rasterization_options: AntialiasingStrategy,
     ) -> Result<(), GlyphLoadingError> {
         // TODO(pcwalton): This is woefully incomplete. See WebRender's code for a more complete
         // implementation.
@@ -873,19 +873,19 @@ impl Font {
     fn hinting_and_rasterization_options_to_load_flags(
         &self,
         hinting: HintingOptions,
-        rasterization: RasterizationOptions,
+        rasterization: AntialiasingStrategy,
     ) -> u32 {
         let mut options = match (hinting, rasterization) {
-            (HintingOptions::VerticalSubpixel(_), _) | (_, RasterizationOptions::SubpixelAa) => {
+            (HintingOptions::VerticalSubpixel(_), _) | (_, AntialiasingStrategy::SubpixelAa) => {
                 FT_LOAD_TARGET_LCD
             }
             (HintingOptions::None, _) => FT_LOAD_TARGET_NORMAL | FT_LOAD_NO_HINTING,
-            (HintingOptions::Vertical(_), RasterizationOptions::Bilevel)
-            | (HintingOptions::Full(_), RasterizationOptions::Bilevel) => FT_LOAD_TARGET_MONO,
+            (HintingOptions::Vertical(_), AntialiasingStrategy::Bilevel)
+            | (HintingOptions::Full(_), AntialiasingStrategy::Bilevel) => FT_LOAD_TARGET_MONO,
             (HintingOptions::Vertical(_), _) => FT_LOAD_TARGET_LIGHT,
             (HintingOptions::Full(_), _) => FT_LOAD_TARGET_NORMAL,
         };
-        if rasterization == RasterizationOptions::Bilevel {
+        if rasterization == AntialiasingStrategy::Bilevel {
             options |= FT_LOAD_MONOCHROME
         }
         options
@@ -1112,7 +1112,7 @@ impl Loader for Font {
         point_size: f32,
         transform: Transform2F,
         hinting_options: HintingOptions,
-        rasterization_options: RasterizationOptions,
+        rasterization_options: AntialiasingStrategy,
     ) -> Result<(), GlyphLoadingError> {
         self.rasterize_glyph(
             canvas,

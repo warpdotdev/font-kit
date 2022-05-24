@@ -10,7 +10,7 @@
 
 // General tests.
 
-use font_kit::canvas::{Canvas, Format, RasterizationOptions};
+use font_kit::canvas::{Canvas, Format, AntialiasingStrategy, RasterizationOptions};
 use font_kit::family_name::FamilyName;
 use font_kit::file_type::FileType;
 use font_kit::font::Font;
@@ -453,7 +453,7 @@ pub fn get_glyph_raster_bounds() {
     let transform = Transform2F::default();
     let size = 32.0;
     let hinting_options = HintingOptions::None;
-    let rasterization_options = RasterizationOptions::GrayscaleAa;
+    let rasterization_options = RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false };
     #[cfg(all(not(target_family = "windows")))]
     let expected_rect = RectI::new(Vector2I::new(1, -20), Vector2I::new(14, 21));
     #[cfg(target_family = "windows")]
@@ -665,7 +665,7 @@ pub fn rasterize_glyph_with_grayscale_aa() {
             size,
             Transform2F::default(),
             HintingOptions::None,
-            RasterizationOptions::GrayscaleAa,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
         )
         .unwrap();
     let mut canvas = Canvas::new(raster_rect.size(), Format::A8);
@@ -675,7 +675,7 @@ pub fn rasterize_glyph_with_grayscale_aa() {
         size,
         Transform2F::from_translation(-raster_rect.origin().to_f32()),
         HintingOptions::None,
-        RasterizationOptions::GrayscaleAa,
+        RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
     )
     .unwrap();
     check_L_shape(&canvas);
@@ -697,7 +697,7 @@ pub fn rasterize_glyph_bilevel() {
             size,
             Transform2F::default(),
             HintingOptions::None,
-            RasterizationOptions::Bilevel,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::Bilevel, use_thin_strokes: false },
         )
         .unwrap();
     let mut canvas = Canvas::new(raster_rect.size(), Format::A8);
@@ -707,7 +707,7 @@ pub fn rasterize_glyph_bilevel() {
         size,
         Transform2F::from_translation(-raster_rect.origin().to_f32()),
         HintingOptions::None,
-        RasterizationOptions::Bilevel,
+        RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::Bilevel, use_thin_strokes: false },
     )
     .unwrap();
     assert!(canvas
@@ -733,7 +733,7 @@ pub fn rasterize_glyph_bilevel_offset() {
             size,
             Transform2F::from_translation(Vector2F::new(30.0, 100.0)),
             HintingOptions::None,
-            RasterizationOptions::Bilevel,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::Bilevel, use_thin_strokes: false },
         )
         .unwrap();
     let mut canvas = Canvas::new(raster_rect.size(), Format::A8);
@@ -743,7 +743,7 @@ pub fn rasterize_glyph_bilevel_offset() {
         size,
         Transform2F::from_translation(-raster_rect.origin().to_f32() + Vector2F::new(30.0, 100.0)),
         HintingOptions::None,
-        RasterizationOptions::Bilevel,
+        RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::Bilevel, use_thin_strokes: false },
     )
     .unwrap();
 
@@ -776,7 +776,7 @@ pub fn rasterize_glyph_with_full_hinting() {
             size,
             Transform2F::default(),
             HintingOptions::None,
-            RasterizationOptions::Bilevel,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::Bilevel, use_thin_strokes: false },
         )
         .unwrap();
     let origin = -raster_rect.origin().to_f32();
@@ -787,7 +787,7 @@ pub fn rasterize_glyph_with_full_hinting() {
         size,
         Transform2F::from_translation(origin),
         HintingOptions::Full(size),
-        RasterizationOptions::GrayscaleAa,
+        RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
     )
     .unwrap();
     check_L_shape(&canvas);
@@ -825,7 +825,7 @@ pub fn rasterize_glyph() {
             size,
             Transform2F::default(),
             HintingOptions::None,
-            RasterizationOptions::GrayscaleAa,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
         )
         .unwrap();
     let mut canvas = Canvas::new(raster_rect.size(), Format::A8);
@@ -835,7 +835,7 @@ pub fn rasterize_glyph() {
         size,
         Transform2F::from_translation(-raster_rect.origin().to_f32()),
         HintingOptions::None,
-        RasterizationOptions::GrayscaleAa,
+        RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
     )
     .unwrap();
     check_curly_shape(&canvas);
@@ -855,7 +855,7 @@ pub fn rasterize_empty_glyph() {
         16.0,
         Transform2F::default(),
         HintingOptions::None,
-        RasterizationOptions::GrayscaleAa,
+        RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
     )
     .unwrap();
 }
@@ -874,7 +874,7 @@ pub fn rasterize_empty_glyph_on_empty_canvas() {
             size,
             Transform2F::default(),
             HintingOptions::None,
-            RasterizationOptions::GrayscaleAa,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
         )
         .unwrap();
     let mut canvas = Canvas::new(raster_rect.size(), Format::A8);
@@ -884,7 +884,7 @@ pub fn rasterize_empty_glyph_on_empty_canvas() {
         size,
         Transform2F::from_translation(-raster_rect.origin().to_f32()),
         HintingOptions::None,
-        RasterizationOptions::GrayscaleAa,
+        RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::GrayscaleAa, use_thin_strokes: false },
     )
     .unwrap();
 }
@@ -905,7 +905,7 @@ pub fn font_transform() {
             size,
             Transform2F::from_translation(Vector2F::splat(8.0)),
             HintingOptions::None,
-            RasterizationOptions::Bilevel,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::Bilevel, use_thin_strokes: false },
         )
         .unwrap();
     let raster_rect2 = font
@@ -914,7 +914,7 @@ pub fn font_transform() {
             size,
             Transform2F::row_major(3.0, 0.0, 0.0, 3.0, 8.0, 8.0),
             HintingOptions::None,
-            RasterizationOptions::Bilevel,
+            RasterizationOptions { antialiasing_strategy: AntialiasingStrategy::Bilevel, use_thin_strokes: false },
         )
         .unwrap();
     assert!((raster_rect2.width() - raster_rect.width() * 3).abs() <= 3);
