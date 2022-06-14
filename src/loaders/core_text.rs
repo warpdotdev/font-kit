@@ -559,8 +559,9 @@ impl Font {
             AntialiasingStrategy::GrayscaleAa | AntialiasingStrategy::SubpixelAa => {
                 // FIXME(pcwalton): These shouldn't be handled the same!
                 if rasterization_options.use_thin_strokes {
+                    // Font smoothing produces thicker strokes; turning it off will lead to
+                    // thinner glyphs.
                     core_graphics_context.set_should_smooth_fonts(false);
-                    core_graphics_context.set_font_smoothing_style(16);
                 } else {
                     core_graphics_context.set_should_smooth_fonts(true);
                 }
