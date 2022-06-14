@@ -15,7 +15,7 @@ extern crate pathfinder_geometry;
 
 use clap::{App, Arg, ArgGroup, ArgMatches};
 use colored::Colorize;
-use font_kit::canvas::{Canvas, Format, AntialiasingStrategy, RasterizationOptions};
+use font_kit::canvas::{AntialiasingStrategy, Canvas, Format, RasterizationOptions};
 use font_kit::hinting::HintingOptions;
 use font_kit::source::SystemSource;
 use pathfinder_geometry::transform2d::Transform2F;

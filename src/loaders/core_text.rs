@@ -37,7 +37,7 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::canvas::{Canvas, Format, AntialiasingStrategy, RasterizationOptions};
+use crate::canvas::{AntialiasingStrategy, Canvas, Format, RasterizationOptions};
 use crate::error::{FontLoadingError, GlyphLoadingError};
 use crate::file_type::FileType;
 use crate::handle::Handle;
