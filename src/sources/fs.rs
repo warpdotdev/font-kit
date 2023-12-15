@@ -16,7 +16,7 @@
 
 use std::any::Any;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 #[cfg(not(any(target_os = "android", target_family = "windows")))]
@@ -50,6 +50,12 @@ pub struct FsSource {
     mem_source: MemSource,
 }
 
+impl Default for FsSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FsSource {
     /// Opens the default set of directories on this platform and indexes the fonts found within.
     ///
@@ -59,28 +65,45 @@ impl FsSource {
     pub fn new() -> FsSource {
         let mut fonts = vec![];
         for font_directory in default_font_directories() {
-            for directory_entry in WalkDir::new(font_directory).into_iter() {
-                let directory_entry = match directory_entry {
-                    Ok(directory_entry) => directory_entry,
-                    Err(_) => continue,
-                };
-                let path = directory_entry.path();
-                let mut file = match File::open(path) {
-                    Err(_) => continue,
-                    Ok(file) => file,
-                };
-                match Font::analyze_file(&mut file) {
-                    Err(_) => continue,
-                    Ok(FileType::Single) => fonts.push(Handle::from_path(path.to_owned(), 0)),
-                    Ok(FileType::Collection(font_count)) => {
-                        for font_index in 0..font_count {
-                            fonts.push(Handle::from_path(path.to_owned(), font_index))
-                        }
+            fonts.extend(Self::discover_fonts(&font_directory));
+        }
+
+        FsSource {
+            mem_source: MemSource::from_fonts(fonts.into_iter()).unwrap(),
+        }
+    }
+
+    fn discover_fonts(path: &Path) -> Vec<Handle> {
+        let mut fonts = vec![];
+        for directory_entry in WalkDir::new(path).into_iter() {
+            let directory_entry = match directory_entry {
+                Ok(directory_entry) => directory_entry,
+                Err(_) => continue,
+            };
+            let path = directory_entry.path();
+            let mut file = match File::open(path) {
+                Err(_) => continue,
+                Ok(file) => file,
+            };
+            match Font::analyze_file(&mut file) {
+                Err(_) => continue,
+                Ok(FileType::Single) => fonts.push(Handle::from_path(path.to_owned(), 0)),
+                Ok(FileType::Collection(font_count)) => {
+                    for font_index in 0..font_count {
+                        fonts.push(Handle::from_path(path.to_owned(), font_index))
                     }
                 }
             }
         }
+        fonts
+    }
 
+    /// Indexes all fonts found in `path`
+    pub fn in_path<P>(path: P) -> FsSource
+    where
+        P: AsRef<Path>,
+    {
+        let fonts = Self::discover_fonts(path.as_ref());
         FsSource {
             mem_source: MemSource::from_fonts(fonts.into_iter()).unwrap(),
         }
