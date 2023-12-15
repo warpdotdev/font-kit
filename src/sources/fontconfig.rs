@@ -34,6 +34,12 @@ pub struct FontconfigSource {
     config: fc::Config,
 }
 
+impl Default for FontconfigSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FontconfigSource {
     /// Initializes Fontconfig and prepares it for queries.
     pub fn new() -> FontconfigSource {
@@ -244,7 +250,13 @@ impl Source for FontconfigSource {
 mod fc {
     #![allow(dead_code)]
 
-    use fontconfig::fontconfig as ffi;
+    use fontconfig_sys as ffi;
+    use fontconfig_sys::ffi_dispatch;
+
+    #[cfg(feature = "source-fontconfig-dlopen")]
+    use ffi::statics::LIB;
+    #[cfg(not(feature = "source-fontconfig-dlopen"))]
+    use ffi::*;
 
     use std::ffi::{CStr, CString};
     use std::os::raw::{c_char, c_uchar};
@@ -266,7 +278,7 @@ mod fc {
     }
 
     impl MatchKind {
-        fn to_u32(&self) -> u32 {
+        fn to_u32(self) -> u32 {
             match self {
                 MatchKind::Pattern => ffi::FcMatchPattern,
                 MatchKind::Font => ffi::FcMatchFont,
@@ -308,7 +320,11 @@ mod fc {
         pub fn new() -> Self {
             unsafe {
                 Config {
-                    d: ffi::FcInitLoadConfigAndFonts(),
+                    d: ffi_dispatch!(
+                        feature = "source-fontconfig-dlopen",
+                        LIB,
+                        FcInitLoadConfigAndFonts,
+                    ),
                 }
             }
         }
@@ -317,7 +333,12 @@ mod fc {
     impl Drop for Config {
         fn drop(&mut self) {
             unsafe {
-                ffi::FcConfigDestroy(self.d);
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcConfigDestroy,
+                    self.d
+                );
             }
         }
     }
@@ -337,23 +358,39 @@ mod fc {
 
         // FcPatternCreate
         pub fn new() -> Self {
-            unsafe { Pattern::from_ptr(ffi::FcPatternCreate()) }
+            unsafe {
+                Pattern::from_ptr(ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcPatternCreate,
+                ))
+            }
         }
 
         // FcNameParse
         pub fn from_name(name: &str) -> Self {
             let c_name = CString::new(name).unwrap();
-            unsafe { Pattern::from_ptr(ffi::FcNameParse(c_name.as_ptr() as *mut c_uchar)) }
+            unsafe {
+                Pattern::from_ptr(ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcNameParse,
+                    c_name.as_ptr() as *mut c_uchar
+                ))
+            }
         }
 
         // FcPatternAddString
         pub fn push_string(&mut self, object: Object, value: String) {
             unsafe {
                 let c_string = CString::new(value).unwrap();
-                ffi::FcPatternAddString(
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcPatternAddString,
                     self.d,
                     object.as_ptr(),
-                    c_string.as_ptr() as *const c_uchar,
+                    c_string.as_ptr() as *const c_uchar
                 );
 
                 // We have to keep this string, because `FcPattern` has a pointer to it now.
@@ -364,21 +401,44 @@ mod fc {
         // FcConfigSubstitute
         pub fn config_substitute(&mut self, match_kind: MatchKind) {
             unsafe {
-                ffi::FcConfigSubstitute(ptr::null_mut(), self.d, match_kind.to_u32());
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcConfigSubstitute,
+                    ptr::null_mut(),
+                    self.d,
+                    match_kind.to_u32()
+                );
             }
         }
 
         // FcDefaultSubstitute
         pub fn default_substitute(&mut self) {
             unsafe {
-                ffi::FcDefaultSubstitute(self.d);
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcDefaultSubstitute,
+                    self.d
+                );
             }
         }
 
         // FcFontSort
         pub fn sorted(&self, config: &Config) -> Result<FontSet, Error> {
             let mut res = ffi::FcResultMatch;
-            let d = unsafe { ffi::FcFontSort(config.d, self.d, 1, ptr::null_mut(), &mut res) };
+            let d = unsafe {
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcFontSort,
+                    config.d,
+                    self.d,
+                    1,
+                    ptr::null_mut(),
+                    &mut res
+                )
+            };
 
             match res {
                 ffi::FcResultMatch => Ok(FontSet { d, idx: 0 }),
@@ -391,7 +451,16 @@ mod fc {
 
         // FcFontList
         pub fn list(&self, config: &Config, set: ObjectSet) -> Result<FontSet, Error> {
-            let d = unsafe { ffi::FcFontList(config.d, self.d, set.d) };
+            let d = unsafe {
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcFontList,
+                    config.d,
+                    self.d,
+                    set.d
+                )
+            };
             if !d.is_null() {
                 Ok(FontSet { d, idx: 0 })
             } else {
@@ -403,7 +472,14 @@ mod fc {
     impl Drop for Pattern {
         #[inline]
         fn drop(&mut self) {
-            unsafe { ffi::FcPatternDestroy(self.d) }
+            unsafe {
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcPatternDestroy,
+                    self.d
+                )
+            }
         }
     }
 
@@ -417,7 +493,15 @@ mod fc {
         pub fn get_string(&self, object: Object) -> Option<String> {
             unsafe {
                 let mut string = ptr::null_mut();
-                let res = ffi::FcPatternGetString(self.d, object.as_ptr(), 0, &mut string);
+                let res = ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcPatternGetString,
+                    self.d,
+                    object.as_ptr(),
+                    0,
+                    &mut string
+                );
                 if res != ffi::FcResultMatch {
                     return None;
                 }
@@ -437,7 +521,15 @@ mod fc {
         pub fn get_integer(&self, object: Object) -> Option<i32> {
             unsafe {
                 let mut integer = 0;
-                let res = ffi::FcPatternGetInteger(self.d, object.as_ptr(), 0, &mut integer);
+                let res = ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcPatternGetInteger,
+                    self.d,
+                    object.as_ptr(),
+                    0,
+                    &mut integer
+                );
                 if res != ffi::FcResultMatch {
                     return None;
                 }
@@ -473,7 +565,7 @@ mod fc {
             let idx = self.idx;
             self.idx += 1;
 
-            let d = unsafe { *(*self.d).fonts.offset(idx as isize) };
+            let d = unsafe { *(*self.d).fonts.add(idx) };
             Some(PatternRef { d })
         }
 
@@ -484,7 +576,14 @@ mod fc {
 
     impl Drop for FontSet {
         fn drop(&mut self) {
-            unsafe { ffi::FcFontSetDestroy(self.d) }
+            unsafe {
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcFontSetDestroy,
+                    self.d
+                )
+            }
         }
     }
 
@@ -497,7 +596,7 @@ mod fc {
         pub fn new() -> Self {
             unsafe {
                 ObjectSet {
-                    d: ffi::FcObjectSetCreate(),
+                    d: ffi_dispatch!(feature = "source-fontconfig-dlopen", LIB, FcObjectSetCreate,),
                 }
             }
         }
@@ -507,14 +606,30 @@ mod fc {
             unsafe {
                 // Returns `false` if the property name cannot be inserted
                 // into the set (due to allocation failure).
-                assert_eq!(ffi::FcObjectSetAdd(self.d, object.as_ptr()), 1);
+                assert_eq!(
+                    ffi_dispatch!(
+                        feature = "source-fontconfig-dlopen",
+                        LIB,
+                        FcObjectSetAdd,
+                        self.d,
+                        object.as_ptr()
+                    ),
+                    1
+                );
             }
         }
     }
 
     impl Drop for ObjectSet {
         fn drop(&mut self) {
-            unsafe { ffi::FcObjectSetDestroy(self.d) }
+            unsafe {
+                ffi_dispatch!(
+                    feature = "source-fontconfig-dlopen",
+                    LIB,
+                    FcObjectSetDestroy,
+                    self.d
+                )
+            }
         }
     }
 }

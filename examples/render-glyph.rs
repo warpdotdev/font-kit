@@ -13,7 +13,7 @@ extern crate colored;
 extern crate font_kit;
 extern crate pathfinder_geometry;
 
-use clap::{App, Arg, ArgGroup, ArgMatches};
+use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Command};
 use colored::Colorize;
 use font_kit::canvas::{AntialiasingStrategy, Canvas, Format, RasterizationOptions};
 use font_kit::hinting::HintingOptions;
@@ -24,51 +24,52 @@ use std::fmt::Write;
 #[cfg(any(target_family = "windows", target_os = "macos"))]
 static SANS_SERIF_FONT_REGULAR_POSTSCRIPT_NAME: &'static str = "ArialMT";
 #[cfg(not(any(target_family = "windows", target_os = "macos")))]
-static SANS_SERIF_FONT_REGULAR_POSTSCRIPT_NAME: &'static str = "DejaVuSans";
+static SANS_SERIF_FONT_REGULAR_POSTSCRIPT_NAME: &str = "DejaVuSans";
 
-fn get_args() -> ArgMatches<'static> {
-    let postscript_name_arg = Arg::with_name("POSTSCRIPT-NAME")
+fn get_args() -> ArgMatches {
+    let postscript_name_arg = Arg::new("POSTSCRIPT-NAME")
         .help("PostScript name of the font")
         .default_value(SANS_SERIF_FONT_REGULAR_POSTSCRIPT_NAME)
         .index(1);
-    let glyph_arg = Arg::with_name("GLYPH")
+    let glyph_arg = Arg::new("GLYPH")
         .help("Character to render")
         .default_value("A")
         .index(2);
-    let size_arg = Arg::with_name("SIZE")
+    let size_arg = Arg::new("SIZE")
         .help("Font size in blocks")
         .default_value("32")
         .index(3);
-    let grayscale_arg = Arg::with_name("grayscale")
+    let grayscale_arg = Arg::new("grayscale")
         .long("grayscale")
         .help("Use grayscale antialiasing (default)");
-    let bilevel_arg = Arg::with_name("bilevel")
+    let bilevel_arg = Arg::new("bilevel")
         .help("Use bilevel (black & white) rasterization")
-        .short("b")
-        .long("bilevel");
-    let subpixel_arg = Arg::with_name("subpixel")
+        .short('b')
+        .long("bilevel")
+        .action(ArgAction::SetTrue);
+    let subpixel_arg = Arg::new("subpixel")
         .help("Use subpixel (LCD) rasterization")
-        .short("s")
-        .long("subpixel");
-    let hinting_arg = Arg::with_name("hinting")
+        .short('s')
+        .long("subpixel")
+        .action(ArgAction::SetTrue);
+    let hinting_value_parser =
+        clap::builder::PossibleValuesParser::new(["none", "vertical", "full"]);
+    let hinting_arg = Arg::new("hinting")
         .help("Select hinting type")
-        .short("H")
+        .short('H')
         .long("hinting")
-        .takes_value(true)
-        .possible_value("none")
-        .possible_value("vertical")
-        .possible_value("full")
+        .value_parser(hinting_value_parser)
         .value_names(&["TYPE"]);
-    let transform_arg = Arg::with_name("transform")
+    let transform_arg = Arg::new("transform")
         .help("Transform to apply to glyph when rendering")
         .long("transform")
-        .number_of_values(4);
+        .num_args(4);
     let rasterization_mode_group =
-        ArgGroup::with_name("rasterization-mode").args(&["grayscale", "bilevel", "subpixel"]);
-    let thin_strokes_arg = Arg::with_name("use_thin_strokes")
+        ArgGroup::new("rasterization-mode").args(&["grayscale", "bilevel", "subpixel"]);
+    let thin_strokes_arg = Arg::new("use_thin_strokes")
         .help("Use thin strokes when rasterizing glyphs")
         .long("use_thin_strokes");
-    App::new("render-glyph")
+    Command::new("render-glyph")
         .version("0.1")
         .author("The Pathfinder Project Developers")
         .about("Simple example tool to render glyphs with `font-kit`")
@@ -88,13 +89,27 @@ fn get_args() -> ArgMatches<'static> {
 fn main() {
     let matches = get_args();
 
-    let postscript_name = matches.value_of("POSTSCRIPT-NAME").unwrap();
-    let character = matches.value_of("GLYPH").unwrap().chars().next().unwrap();
-    let size: f32 = matches.value_of("SIZE").unwrap().parse().unwrap();
+    let postscript_name = matches
+        .get_one::<String>("POSTSCRIPT-NAME")
+        .map(|s| s.as_str())
+        .unwrap();
+    let character = matches
+        .get_one::<String>("GLYPH")
+        .map(|s| s.as_str())
+        .unwrap()
+        .chars()
+        .next()
+        .unwrap();
+    let size: f32 = matches
+        .get_one::<String>("SIZE")
+        .map(|s| s.as_str())
+        .unwrap()
+        .parse()
+        .unwrap();
 
-    let (canvas_format, antialiasing_strategy) = if matches.is_present("bilevel") {
+    let (canvas_format, antialiasing_strategy) = if matches.get_flag("bilevel") {
         (Format::A8, AntialiasingStrategy::Bilevel)
-    } else if matches.is_present("subpixel") {
+    } else if matches.get_flag("subpixel") {
         (Format::Rgb24, AntialiasingStrategy::SubpixelAa)
     } else {
         (Format::A8, AntialiasingStrategy::GrayscaleAa)
@@ -102,24 +117,24 @@ fn main() {
 
     let rasterization_options = RasterizationOptions {
         antialiasing_strategy,
-        use_thin_strokes: matches.is_present("use_thin_strokes"),
+        use_thin_strokes: matches.get_flag("use_thin_strokes"),
     };
 
     let mut transform = Transform2F::default();
-    if let Some(values) = matches.values_of("transform") {
+    if let Some(values) = matches.get_many::<String>("transform") {
         if let [Ok(a), Ok(b), Ok(c), Ok(d)] = values.map(|x| x.parse()).collect::<Vec<_>>()[..] {
             transform = Transform2F::row_major(a, b, c, d, 0.0, 0.0)
         }
     }
 
-    let hinting_options = match matches.value_of("hinting") {
-        Some(value) if value == "vertical" => HintingOptions::Vertical(size),
-        Some(value) if value == "full" => HintingOptions::Full(size),
+    let hinting_options = match matches.get_one::<String>("hinting").map(|s| s.as_str()) {
+        Some("vertical") => HintingOptions::Vertical(size),
+        Some("full") => HintingOptions::Full(size),
         _ => HintingOptions::None,
     };
 
     let font = SystemSource::new()
-        .select_by_postscript_name(&postscript_name)
+        .select_by_postscript_name(postscript_name)
         .unwrap()
         .load()
         .unwrap();
@@ -158,7 +173,7 @@ fn main() {
                     write!(
                         &mut line,
                         "{}{}{}",
-                        shade(row[x as usize * 3 + 0]).to_string().red(),
+                        shade(row[x as usize * 3]).to_string().red(),
                         shade(row[x as usize * 3 + 1]).to_string().green(),
                         shade(row[x as usize * 3 + 2]).to_string().blue()
                     )

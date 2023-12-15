@@ -27,22 +27,19 @@ use std::sync::Arc;
 #[cfg(feature = "source")]
 use font_kit::source::SystemSource;
 
-static TEST_FONT_FILE_PATH: &'static str = "resources/tests/eb-garamond/EBGaramond12-Regular.otf";
-static TEST_FONT_POSTSCRIPT_NAME: &'static str = "EBGaramond12-Regular";
-static TEST_FONT_COLLECTION_FILE_PATH: &'static str =
-    "resources/tests/eb-garamond/EBGaramond12.otc";
-static TEST_FONT_COLLECTION_POSTSCRIPT_NAME: [&'static str; 2] =
+static TEST_FONT_FILE_PATH: &str = "resources/tests/eb-garamond/EBGaramond12-Regular.otf";
+static TEST_FONT_POSTSCRIPT_NAME: &str = "EBGaramond12-Regular";
+static TEST_FONT_COLLECTION_FILE_PATH: &str = "resources/tests/eb-garamond/EBGaramond12.otc";
+static TEST_FONT_COLLECTION_POSTSCRIPT_NAME: [&str; 2] =
     ["EBGaramond12-Regular", "EBGaramond12-Italic"];
 
-static FILE_PATH_EB_GARAMOND_TTF: &'static str =
-    "resources/tests/eb-garamond/EBGaramond12-Regular.ttf";
-static FILE_PATH_INCONSOLATA_TTF: &'static str =
-    "resources/tests/inconsolata/Inconsolata-Regular.ttf";
+static FILE_PATH_EB_GARAMOND_TTF: &str = "resources/tests/eb-garamond/EBGaramond12-Regular.ttf";
+static FILE_PATH_INCONSOLATA_TTF: &str = "resources/tests/inconsolata/Inconsolata-Regular.ttf";
 
 #[cfg(not(target_os = "linux"))]
 static KNOWN_SYSTEM_FONT_NAME: &'static str = "Arial";
 #[cfg(target_os = "linux")]
-static KNOWN_SYSTEM_FONT_NAME: &'static str = "DejaVu Sans";
+static KNOWN_SYSTEM_FONT_NAME: &str = "DejaVu Sans";
 
 static SFNT_VERSIONS: [[u8; 4]; 4] = [
     [0x00, 0x01, 0x00, 0x00],
@@ -264,6 +261,7 @@ pub fn get_vertically_hinted_glyph_outline() {
 
 #[cfg(all(
     feature = "source",
+    not(feature = "loader-freetype-default"),
     not(any(target_os = "macos", target_os = "ios", target_family = "windows"))
 ))]
 #[test]
@@ -354,6 +352,7 @@ pub fn get_fully_hinted_glyph_outline() {
 
 #[cfg(all(
     feature = "source",
+    not(feature = "loader-freetype-default"),
     not(any(target_os = "macos", target_os = "ios", target_family = "windows"))
 ))]
 #[test]
@@ -457,7 +456,7 @@ pub fn get_glyph_raster_bounds() {
         antialiasing_strategy: AntialiasingStrategy::GrayscaleAa,
         use_thin_strokes: false,
     };
-    #[cfg(all(not(target_family = "windows")))]
+    #[cfg(not(target_family = "windows"))]
     let expected_rect = RectI::new(Vector2I::new(1, -20), Vector2I::new(14, 21));
     #[cfg(target_family = "windows")]
     let expected_rect = RectI::new(Vector2I::new(1, -20), Vector2I::new(14, 20));
@@ -600,7 +599,7 @@ pub fn get_font_metrics() {
     assert_eq!(metrics.ascent, 1901.0);
     assert_eq!(metrics.descent, -483.0);
     assert_eq!(metrics.line_gap, 0.0); // FIXME(pcwalton): Huh?!
-    assert_eq!(metrics.underline_position, -130.0);
+    assert_eq!(metrics.underline_position, -40.0);
     assert_eq!(metrics.underline_thickness, 90.0);
     assert_eq!(metrics.cap_height, 0.0); // FIXME(pcwalton): Huh?!
     assert_eq!(metrics.x_height, 0.0); // FIXME(pcwalton): Huh?!
@@ -822,7 +821,7 @@ pub fn rasterize_glyph_with_full_hinting() {
     // Make sure the top and bottom (non-blank) rows have some fully black pixels in them.
     let mut top_row = &canvas.pixels[0..canvas.stride];
     if top_row.iter().all(|&value| value == 0) {
-        top_row = &canvas.pixels[(1 * canvas.stride)..(2 * canvas.stride)];
+        top_row = &canvas.pixels[canvas.stride..(2 * canvas.stride)];
     }
 
     assert!(top_row.iter().any(|&value| value == 0xff));

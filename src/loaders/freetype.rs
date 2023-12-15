@@ -16,9 +16,11 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use freetype::freetype::{FT_Byte, FT_Done_Face, FT_Error, FT_Face, FT_FACE_FLAG_FIXED_WIDTH};
 use freetype::freetype::{
+    FT_Done_FreeType, FT_Get_Sfnt_Table, FT_Init_FreeType, FT_LcdFilter, FT_Library,
+};
+use freetype::freetype::{
     FT_Fixed, FT_Get_Char_Index, FT_Get_Name_Index, FT_Get_Postscript_Name, FT_Pos,
 };
-use freetype::freetype::{FT_Get_Sfnt_Table, FT_Init_FreeType, FT_LcdFilter, FT_Library};
 use freetype::freetype::{FT_Library_SetLcdFilter, FT_Load_Glyph, FT_LOAD_DEFAULT};
 use freetype::freetype::{FT_Load_Sfnt_Table, FT_Long, FT_Matrix, FT_New_Memory_Face};
 use freetype::freetype::{FT_Reference_Face, FT_Set_Char_Size, FT_Set_Transform, FT_Sfnt_Tag};
@@ -94,14 +96,25 @@ const BDF_PROPERTY_TYPE_INTEGER: BDF_PropertyType = 2;
 const BDF_PROPERTY_TYPE_CARDINAL: BDF_PropertyType = 3;
 
 thread_local! {
-    static FREETYPE_LIBRARY: FT_Library = {
+    static FREETYPE_LIBRARY: FtLibrary = {
         unsafe {
             let mut library = ptr::null_mut();
             assert_eq!(FT_Init_FreeType(&mut library), 0);
             FT_Library_SetLcdFilter(library, FT_LcdFilter::FT_LCD_FILTER_DEFAULT);
-            library
+            FtLibrary(library)
         }
     };
+}
+
+#[repr(transparent)]
+struct FtLibrary(FT_Library);
+
+impl Drop for FtLibrary {
+    fn drop(&mut self) {
+        unsafe {
+            FT_Done_FreeType(self.0);
+        }
+    }
 }
 
 /// The handle that the FreeType API natively uses to represent a font.
@@ -137,7 +150,7 @@ impl Font {
         FREETYPE_LIBRARY.with(|freetype_library| unsafe {
             let mut freetype_face = ptr::null_mut();
             if FT_New_Memory_Face(
-                *freetype_library,
+                freetype_library.0,
                 (*font_data).as_ptr(),
                 font_data.len() as FT_Long,
                 font_index as FT_Long,
@@ -216,7 +229,7 @@ impl Font {
         FREETYPE_LIBRARY.with(|freetype_library| unsafe {
             let mut freetype_face = ptr::null_mut();
             if FT_New_Memory_Face(
-                *freetype_library,
+                freetype_library.0,
                 (*font_data).as_ptr(),
                 font_data.len() as FT_Long,
                 0,
@@ -244,7 +257,7 @@ impl Font {
 
             let mut freetype_face = ptr::null_mut();
             if FT_New_Memory_Face(
-                *freetype_library,
+                freetype_library.0,
                 (*font_data).as_ptr(),
                 font_data.len() as FT_Long,
                 0,
@@ -359,14 +372,14 @@ impl Font {
                 _ => Style::Normal,
             };
             let stretch = match os2_table {
-                Some(os2_table) if (*os2_table).usWidthClass > 0 => {
+                Some(os2_table) if (1..=9).contains(&(*os2_table).usWidthClass) => {
                     Stretch(Stretch::MAPPING[((*os2_table).usWidthClass as usize) - 1])
                 }
                 _ => Stretch::NORMAL,
             };
             let weight = match os2_table {
                 None => Weight::NORMAL,
-                Some(os2_table) => Weight((*os2_table).usWeightClass as u32 as f32),
+                Some(os2_table) => Weight((*os2_table).usWeightClass as f32),
             };
             Properties {
                 style,
@@ -400,7 +413,7 @@ impl Font {
                 unsafe { FT_Get_Name_Index(self.freetype_face, ffi_name.as_ptr() as *mut c_char) };
 
             if code > 0 {
-                return Some(u32::from(code));
+                return Some(code);
             }
         }
         None
@@ -451,11 +464,9 @@ impl Font {
             }
 
             let outline = &(*(*self.freetype_face).glyph).outline;
-            let contours =
-                slice::from_raw_parts((*outline).contours, (*outline).n_contours as usize);
-            let point_positions =
-                slice::from_raw_parts((*outline).points, (*outline).n_points as usize);
-            let point_tags = slice::from_raw_parts((*outline).tags, (*outline).n_points as usize);
+            let contours = slice::from_raw_parts(outline.contours, outline.n_contours as usize);
+            let point_positions = slice::from_raw_parts(outline.points, outline.n_points as usize);
+            let point_tags = slice::from_raw_parts(outline.tags, outline.n_points as usize);
 
             let mut current_point_index = 0;
             for &last_point_index_in_contour in contours {
@@ -559,7 +570,7 @@ impl Font {
             }
 
             if hinting.grid_fitting_size().is_some() {
-                reset_freetype_face_char_size((*self).freetype_face)
+                reset_freetype_face_char_size(self.freetype_face)
             }
         }
 
@@ -841,12 +852,19 @@ impl Font {
             // need to keep this around for bilevel rendering, as the direct API doesn't work with
             // that mode.
             let bitmap = &(*(*self.freetype_face).glyph).bitmap;
-            let bitmap_stride = (*bitmap).pitch as usize;
-            let bitmap_width = (*bitmap).width as i32;
-            let bitmap_height = (*bitmap).rows as i32;
+            let bitmap_stride = bitmap.pitch as usize;
+            let bitmap_width = bitmap.width as i32;
+            let bitmap_height = bitmap.rows as i32;
             let bitmap_size = Vector2I::new(bitmap_width, bitmap_height);
-            let bitmap_buffer = (*bitmap).buffer as *const i8 as *const u8;
+            let bitmap_buffer = bitmap.buffer as *const i8 as *const u8;
             let bitmap_length = bitmap_stride * bitmap_height as usize;
+            if bitmap_buffer.is_null() {
+                assert_eq!(
+                    bitmap_length, 0,
+                    "bitmap length should be 0 when bitmap_buffer is nullptr"
+                );
+                return Ok(());
+            }
             let buffer = slice::from_raw_parts(bitmap_buffer, bitmap_length);
             let dst_point = Vector2I::new(
                 (*(*self.freetype_face).glyph).bitmap_left,
@@ -854,7 +872,7 @@ impl Font {
             );
 
             // FIXME(pcwalton): This function should return a Result instead.
-            match (*bitmap).pixel_mode {
+            match bitmap.pixel_mode {
                 FT_PIXEL_MODE_GRAY => {
                     canvas.blit_from(dst_point, buffer, bitmap_size, bitmap_stride, Format::A8);
                 }
@@ -1201,7 +1219,7 @@ impl FtFixedToF32 for RectI {
     type Output = RectF;
     #[inline]
     fn ft_fixed_26_6_to_f32(self) -> RectF {
-        (self.to_f32() * (1.0 / 64.0))
+        self.to_f32() * (1.0 / 64.0)
     }
 }
 
@@ -1227,8 +1245,8 @@ extern "C" {
 mod test {
     use crate::loaders::freetype::Font;
 
-    static PCF_FONT_PATH: &'static str = "resources/tests/times-roman-pcf/timR12.pcf";
-    static PCF_FONT_POSTSCRIPT_NAME: &'static str = "Times-Roman";
+    static PCF_FONT_PATH: &str = "resources/tests/times-roman-pcf/timR12.pcf";
+    static PCF_FONT_POSTSCRIPT_NAME: &str = "Times-Roman";
 
     #[test]
     fn get_pcf_postscript_name() {
