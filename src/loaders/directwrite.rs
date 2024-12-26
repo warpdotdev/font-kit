@@ -25,7 +25,7 @@ use dwrote::InformationalStringId as DWriteInformationalStringId;
 use dwrote::OutlineBuilder as DWriteOutlineBuilder;
 use dwrote::{DWRITE_TEXTURE_ALIASED_1x1, DWRITE_TEXTURE_CLEARTYPE_3x1};
 use dwrote::{DWRITE_GLYPH_RUN, DWRITE_MEASURING_MODE_NATURAL};
-use dwrote::{DWRITE_RENDERING_MODE_ALIASED, DWRITE_RENDERING_MODE_NATURAL};
+use dwrote::{DWRITE_RENDERING_MODE_ALIASED, DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC};
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::Transform2F;
@@ -600,9 +600,10 @@ impl Font {
             let rendering_mode = match rasterization_options.antialiasing_strategy {
                 AntialiasingStrategy::Bilevel => DWRITE_RENDERING_MODE_ALIASED,
                 AntialiasingStrategy::GrayscaleAa | AntialiasingStrategy::SubpixelAa => {
-                    DWRITE_RENDERING_MODE_NATURAL
+                    DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC
                 }
             };
+    
 
             Ok(DWriteGlyphRunAnalysis::create(
                 &glyph_run,
