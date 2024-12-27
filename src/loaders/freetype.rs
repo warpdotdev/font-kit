@@ -418,6 +418,12 @@ impl Font {
         }
         None
     }
+    
+    pub fn is_colored(&self) -> bool {
+        // TODO: Determine the correct strategy for reading colored glyphs
+        // on Linux
+        false
+    }
 
     /// Returns the number of glyphs in the font.
     ///

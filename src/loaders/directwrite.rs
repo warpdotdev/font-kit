@@ -25,11 +25,13 @@ use dwrote::InformationalStringId as DWriteInformationalStringId;
 use dwrote::OutlineBuilder as DWriteOutlineBuilder;
 use dwrote::{DWRITE_TEXTURE_ALIASED_1x1, DWRITE_TEXTURE_CLEARTYPE_3x1};
 use dwrote::{DWRITE_GLYPH_RUN, DWRITE_MEASURING_MODE_NATURAL};
-use dwrote::{DWRITE_RENDERING_MODE_ALIASED, DWRITE_RENDERING_MODE_NATURAL};
+use dwrote::{DWRITE_RENDERING_MODE_ALIASED, DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC};
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use winapi::shared::minwindef::TRUE;
+use winapi::um::dwrite_2::IDWriteFontFace2;
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::fmt::{self, Debug, Formatter};
@@ -200,6 +202,13 @@ impl Font {
         NativeFont {
             dwrite_font: self.dwrite_font.clone(),
             dwrite_font_face: self.dwrite_font_face.clone(),
+        }
+    }
+
+    pub fn is_colored(&self) -> bool {
+        unsafe {
+            let font_face = self.dwrite_font_face.as_ptr().cast::<IDWriteFontFace2>();
+            (*font_face).IsColorFont() == TRUE
         }
     }
 
@@ -600,9 +609,10 @@ impl Font {
             let rendering_mode = match rasterization_options.antialiasing_strategy {
                 AntialiasingStrategy::Bilevel => DWRITE_RENDERING_MODE_ALIASED,
                 AntialiasingStrategy::GrayscaleAa | AntialiasingStrategy::SubpixelAa => {
-                    DWRITE_RENDERING_MODE_NATURAL
+                    DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC
                 }
             };
+    
 
             Ok(DWriteGlyphRunAnalysis::create(
                 &glyph_run,
