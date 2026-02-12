@@ -13,6 +13,7 @@
 use dwrote::Font as DWriteFont;
 use dwrote::FontCollection as DWriteFontCollection;
 use std::any::Any;
+use std::sync::Arc;
 
 use crate::error::SelectionError;
 use crate::family_handle::FamilyHandle;
@@ -101,12 +102,23 @@ impl DirectWriteSource {
     }
 
     fn create_handle_from_dwrite_font(&self, dwrite_font: DWriteFont) -> Handle {
-        let dwrite_font_face = dwrite_font.create_font_face();
-        let dwrite_font_files = dwrite_font_face.get_files();
-        Handle::Path {
-            path: dwrite_font_files[0].get_font_file_path().unwrap(),
-            font_index: dwrite_font_face.get_index(),
-        }
+        if let Ok(font_face) = dwrite_font.create_font_face() {
+            if let Some(path) = font_face
+                .files()
+                .ok()
+                .and_then(|files| files.into_iter().next())
+                .and_then(|file| file.font_file_path().ok())
+            {
+                return Handle::Path {
+                    path,
+                    font_index: font_face.get_index(),
+                };
+            };
+        };
+        return Handle::Memory {
+            bytes: Arc::new(vec![]),
+            font_index: 0,
+        };
     }
 }
 
