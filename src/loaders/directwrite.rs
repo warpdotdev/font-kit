@@ -110,7 +110,9 @@ impl Font {
                 let Ok(dwrite_font) = family.font(family_font_index) else {
                     continue;
                 };
-                let dwrite_font_face = dwrite_font.create_font_face();
+                let Ok(dwrite_font_face) = dwrite_font.create_font_face() else {
+                    continue;
+                };
                 return Ok(Font {
                     dwrite_font,
                     dwrite_font_face,
@@ -224,7 +226,7 @@ impl Font {
     #[inline]
     pub fn postscript_name(&self) -> Option<String> {
         let dwrite_font = &self.dwrite_font;
-        dwrite_font.informational_string(DWriteInformationalStringId::PostscriptName)
+        dwrite_font.informational_string(DWriteInformationalStringId::PostscriptName).ok()?
     }
 
     /// Returns the full name of the font (also known as "display name" on macOS).
@@ -233,13 +235,15 @@ impl Font {
         let dwrite_font = &self.dwrite_font;
         dwrite_font
             .informational_string(DWriteInformationalStringId::FullName)
-            .unwrap_or_else(|| dwrite_font.family_name())
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| dwrite_font.family_name().unwrap_or_default())
     }
 
     /// Returns the name of the font family.
     #[inline]
     pub fn family_name(&self) -> String {
-        self.dwrite_font.family_name()
+        self.dwrite_font.family_name().unwrap_or_default()
     }
 
     /// Returns true if and only if the font is monospace (fixed-width).
@@ -265,8 +269,10 @@ impl Font {
     /// use cases like "what does character X look like on its own".
     pub fn glyph_for_char(&self, character: char) -> Option<u32> {
         let chars = [character as u32];
-        self.dwrite_font_face
-            .get_glyph_indices(&chars)
+        let indices = self.dwrite_font_face
+            .glyph_indices(&chars)
+            .ok()?;
+        indices
             .into_iter()
             .next()
             .and_then(|g| {
@@ -304,7 +310,7 @@ impl Font {
         S: OutlineSink,
     {
         let outline_sink = OutlineCanonicalizer::new();
-        self.dwrite_font_face.get_glyph_run_outline(
+        self.dwrite_font_face.glyph_run_outline(
             self.metrics().units_per_em as f32,
             &[glyph_id as u16],
             None,
@@ -312,7 +318,7 @@ impl Font {
             false,
             false,
             Box::new(outline_sink.clone()),
-        );
+        ).map_err(|_| GlyphLoadingError::NoSuchGlyph)?;
         outline_sink
             .0
             .lock()
@@ -327,7 +333,8 @@ impl Font {
     pub fn typographic_bounds(&self, glyph_id: u32) -> Result<RectF, GlyphLoadingError> {
         let metrics = self
             .dwrite_font_face
-            .get_design_glyph_metrics(&[glyph_id as u16], false);
+            .design_glyph_metrics(&[glyph_id as u16], false)
+            .map_err(|_| GlyphLoadingError::NoSuchGlyph)?;
 
         let metrics = &metrics[0];
         let advance_width = metrics.advanceWidth as i32;
@@ -354,7 +361,8 @@ impl Font {
     pub fn advance(&self, glyph_id: u32) -> Result<Vector2F, GlyphLoadingError> {
         let metrics = self
             .dwrite_font_face
-            .get_design_glyph_metrics(&[glyph_id as u16], false);
+            .design_glyph_metrics(&[glyph_id as u16], false)
+            .map_err(|_| GlyphLoadingError::NoSuchGlyph)?;
         let metrics = &metrics[0];
         Ok(Vector2F::new(metrics.advanceWidth as f32, 0.0))
     }
@@ -363,7 +371,8 @@ impl Font {
     pub fn origin(&self, glyph: u32) -> Result<Vector2F, GlyphLoadingError> {
         let metrics = self
             .dwrite_font_face
-            .get_design_glyph_metrics(&[glyph as u16], false);
+            .design_glyph_metrics(&[glyph as u16], false)
+            .map_err(|_| GlyphLoadingError::NoSuchGlyph)?;
         Ok(Vector2I::new(
             metrics[0].leftSideBearing,
             metrics[0].verticalOriginY + metrics[0].bottomSideBearing,
@@ -400,7 +409,9 @@ impl Font {
             DWriteFontMetrics::Metrics0(metrics) => {
                 let bounding_box = match self
                     .dwrite_font_face
-                    .get_font_table(OPENTYPE_TABLE_TAG_HEAD.swap_bytes())
+                    .font_table(OPENTYPE_TABLE_TAG_HEAD.swap_bytes())
+                    .ok()
+                    .flatten()
                 {
                     Some(head) => {
                         let mut reader = &head[36..];
@@ -446,10 +457,13 @@ impl Font {
     pub fn copy_font_data(&self) -> Option<Arc<Vec<u8>>> {
         let mut font_data = self.cached_data.lock().unwrap();
         if font_data.is_none() {
-            let files = self.dwrite_font_face.get_files();
-            // FIXME(pcwalton): Is this right? When can a font have multiple files?
-            if let Some(file) = files.get(0) {
-                *font_data = Some(Arc::new(file.get_font_file_bytes()))
+            if let Ok(files) = self.dwrite_font_face.files() {
+                // FIXME(pcwalton): Is this right? When can a font have multiple files?
+                if let Some(file) = files.get(0) {
+                    if let Ok(bytes) = file.font_file_bytes() {
+                        *font_data = Some(Arc::new(bytes))
+                    }
+                }
             }
         }
         (*font_data).clone()
@@ -668,14 +682,16 @@ impl Font {
             0,
             text_utf16_len,
             &collection,
-            Some(&self.dwrite_font.family_name()),
+            self.dwrite_font.family_name().ok().as_deref(),
             self.dwrite_font.weight(),
             self.dwrite_font.style(),
             self.dwrite_font.stretch(),
         );
         let valid_len = convert_len_utf16_to_utf8(text, fallback_result.mapped_length);
         let fonts = if let Some(dwrite_font) = fallback_result.mapped_font {
-            let dwrite_font_face = dwrite_font.create_font_face();
+            let Ok(dwrite_font_face) = dwrite_font.create_font_face() else {
+                return FallbackResult { fonts: vec![], valid_len };
+            };
             let font = Font {
                 dwrite_font,
                 dwrite_font_face,
@@ -699,7 +715,9 @@ impl Font {
     /// [OpenType specification]: https://docs.microsoft.com/en-us/typography/opentype/spec/
     pub fn load_font_table(&self, table_tag: u32) -> Option<Box<[u8]>> {
         self.dwrite_font_face
-            .get_font_table(table_tag.swap_bytes())
+            .font_table(table_tag.swap_bytes())
+            .ok()
+            .flatten()
             .map(|v| v.into())
     }
 }
