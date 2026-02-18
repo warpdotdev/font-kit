@@ -12,8 +12,9 @@
 
 use dwrote::Font as DWriteFont;
 use dwrote::FontCollection as DWriteFontCollection;
+use dwrote::HRESULT;
 use std::any::Any;
-use std::sync::Arc;
+use winapi::shared::winerror;
 
 use crate::error::SelectionError;
 use crate::family_handle::FamilyHandle;
@@ -45,7 +46,10 @@ impl DirectWriteSource {
                 let Ok(dwrite_font) = dwrite_family.font(font_index) else {
                     continue;
                 };
-                handles.push(self.create_handle_from_dwrite_font(dwrite_font))
+                let Ok(handle) = self.create_handle_from_dwrite_font(dwrite_font) else {
+                    continue;
+                };
+                handles.push(handle)
             }
         }
 
@@ -74,7 +78,10 @@ impl DirectWriteSource {
             let Ok(dwrite_font) = dwrite_family.font(font_index) else {
                 continue;
             };
-            family.push(self.create_handle_from_dwrite_font(dwrite_font));
+            let Ok(handle) = self.create_handle_from_dwrite_font(dwrite_font) else {
+                continue;
+            };
+            family.push(handle);
         }
         Ok(family)
     }
@@ -101,24 +108,18 @@ impl DirectWriteSource {
         <Self as Source>::select_best_match(self, family_names, properties)
     }
 
-    fn create_handle_from_dwrite_font(&self, dwrite_font: DWriteFont) -> Handle {
-        if let Ok(font_face) = dwrite_font.create_font_face() {
-            if let Some(path) = font_face
-                .files()
-                .ok()
-                .and_then(|files| files.into_iter().next())
-                .and_then(|file| file.font_file_path().ok())
-            {
-                return Handle::Path {
-                    path,
-                    font_index: font_face.get_index(),
-                };
-            };
-        };
-        return Handle::Memory {
-            bytes: Arc::new(vec![]),
-            font_index: 0,
-        };
+    fn create_handle_from_dwrite_font(&self, dwrite_font: DWriteFont) -> Result<Handle, HRESULT> {
+        let font_face = dwrite_font.create_font_face()?;
+        let path = font_face
+            .files()?
+            .into_iter()
+            .next()
+            .ok_or(winerror::E_FAIL)?
+            .font_file_path()?;
+        Ok(Handle::Path {
+            path,
+            font_index: font_face.get_index(),
+        })
     }
 }
 
